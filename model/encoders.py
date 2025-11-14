@@ -144,7 +144,7 @@ class MLPEncoder(nn.Module):
 
 class RBFembedding(nn.Module):
     def __init__(
-        self, 
+        self,
         embedding_size: int = 96,
         exponent_digits: int = 1,
         token_embed_dim: int = 32,
@@ -156,7 +156,8 @@ class RBFembedding(nn.Module):
         use_learn_embeddings: bool = False,
         as_tokenizer: bool = False,
         use_original_features: bool = False,
-        dtype: torch.dtype = torch.float32
+        dtype: torch.dtype = torch.float32,
+        chunk_size: int = None
     ):
         super().__init__()
         self.dtype = dtype
@@ -164,6 +165,7 @@ class RBFembedding(nn.Module):
         self.exponent_digits = exponent_digits
         self.as_tokenizer = as_tokenizer
         self.use_original_features = use_original_features
+        self.chunk_size = chunk_size
 
         min_val, max_val = center_range
         if n_kernels <= 1:
@@ -208,9 +210,19 @@ class RBFembedding(nn.Module):
             self.out_layer = nn.Linear(n_kernels, embedding_size, dtype=dtype)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # x: shape (batch_size, n_features)
         x = x.squeeze(-1)
-        S, F = x.shape[0], (x.shape[1] if x.ndim > 1 else 1)
+        original_shape = x.shape
+        S = original_shape[0]
+        F = original_shape[1] if x.ndim > 1 else 1
+
+        # Check if chunking is needed
+        if self.chunk_size is not None and self.chunk_size > 0 and S > self.chunk_size:
+            return self._forward_chunked(x, S, F)
+        else:
+            return self._forward_full(x, S, F)
+
+    def _forward_full(self, x: torch.Tensor, S: int, F: int) -> torch.Tensor:
+        """Full computation without chunking - original logic"""
         x64 = x.to(torch.float64)
         if self.gate_mlp is not None:
             abs_x = torch.abs(x64)
@@ -232,26 +244,52 @@ class RBFembedding(nn.Module):
             sign_idx = (x64 < 0).to(torch.long)
             exp_sign_idx = (exp_i < 0).to(torch.long)
             abs_exp = exp_i.abs()
-            sign_emb = self.sign_embedding(sign_idx)            # (S, F, D)
+            sign_emb = self.sign_embedding(sign_idx)
             exp_sign_emb = self.exp_sign_embedding(exp_sign_idx)
             exp_digit_emb_list = []
             for power in range(self.exponent_digits):
                 digit = (abs_exp // (10 ** power)) % 10
                 exp_digit_emb_list.append(self.exp_digit_embedding(digit))
-            exp_digits_emb = torch.stack(exp_digit_emb_list[::-1], dim=-2)     # (S,F,e,D)
+            exp_digits_emb = torch.stack(exp_digit_emb_list[::-1], dim=-2)
             exp_digits_emb_flat = einops.rearrange(exp_digits_emb, "... e D -> ... (e D)")
             ctrl = torch.cat([sign_emb, exp_sign_emb, exp_digits_emb_flat], dim=-1).to(self.dtype)
-            gamma_beta = self.gate_mlp(ctrl)                # (S, F, 2*k)
+            gamma_beta = self.gate_mlp(ctrl)
             gamma, beta = torch.split(gamma_beta, self.n_kernels, dim=-1)
-            gamma = torch.sigmoid(gamma)                    # (S, F, k), 0~1
-            beta = torch.tanh(beta)                         # (S, F, k), -1~1
-            # rbf = self.norm(rbf)
+            gamma = torch.sigmoid(gamma)
+            beta = torch.tanh(beta)
             rbf = rbf * gamma + beta
             rbf = self.norm(rbf)
         if self.use_original_features:
             rbf = torch.cat([rbf, x.unsqueeze(-1)], dim=-1)
-        out = self.out_layer(rbf.to(self.dtype))            # (S, F, embedding_size)
+        out = self.out_layer(rbf.to(self.dtype))
         return out.reshape(S, -1) if not self.as_tokenizer else out
+
+    def _forward_chunked(self, x: torch.Tensor, S: int, F: int) -> torch.Tensor:
+        """Chunked computation version - reduces memory consumption"""
+        num_chunks = (S + self.chunk_size - 1) // self.chunk_size
+
+        outputs = []
+        for i in range(num_chunks):
+            start_idx = i * self.chunk_size
+            end_idx = min((i + 1) * self.chunk_size, S)
+
+            # Extract current chunk
+            x_chunk = x[start_idx:end_idx]
+
+            # Process current chunk
+            chunk_S = x_chunk.shape[0]
+            chunk_output = self._forward_full(x_chunk, chunk_S, F)
+
+            outputs.append(chunk_output)
+
+            # Release memory
+            del x_chunk, chunk_output
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+        # Merge results
+        out = torch.cat(outputs, dim=0)
+        return out
     
 class MaskEmbEncoder(nn.Module):
     """
@@ -308,6 +346,7 @@ class MaskEmbEncoder(nn.Module):
                 nn.ReLU()
             )
         elif numeric_embed_type == "RBF":
+            chunk_size = RBF_config.get('chunk_size', None) if RBF_config else None
             self.numeric_mlp = RBFembedding(
                 embedding_size=self.embedding_dim,
                 exponent_digits=1,
@@ -320,6 +359,7 @@ class MaskEmbEncoder(nn.Module):
                 use_random_kernels=RBF_config['use_random_kernels'],
                 use_original_features=RBF_config['use_original_features'],
                 as_tokenizer=True,
+                chunk_size=chunk_size,
             )
         else:
             raise ValueError(f"Invalid numeric_embed_type: {numeric_embed_type}")

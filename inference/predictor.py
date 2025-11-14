@@ -27,9 +27,9 @@ NA_PLACEHOLDER = "__MISSING__"
 
 class LimiXPredictor:
     """"LimiX model inferencer, supporting tasks such as classification, regression, and missing value prediction."""
-    def __init__(self, 
-                 device:torch.device, 
-                 model_path:str, 
+    def __init__(self,
+                 device:torch.device,
+                 model_path:str,
                  inference_config: list|str,
                  mix_precision:bool=True,
                  outlier_remove_std: float=12,
@@ -38,10 +38,11 @@ class LimiXPredictor:
                  mask_prediction:bool=False,
                  categorical_features_indices:List[int]|None=None,
                  inference_with_DDP: bool = False,
-                 seed:int=0):
+                 seed:int=0,
+                 rbf_chunk_size:int=None):
         """
         init LimiXPredictor
-        
+
         Args:
             device: The device for performing inference; GPU is recommended
             model_path: The model path of LimiX
@@ -54,6 +55,7 @@ class LimiXPredictor:
             inference_config: inference_config_setting,
             inference_with_DDP: If using DDP to inference,
             seed: Random seed
+            rbf_chunk_size: Chunk size for RBF computation to reduce memory usage (default: None)
         """
         if isinstance(inference_config, str):
             if os.path.isfile(inference_config):
@@ -79,9 +81,10 @@ class LimiXPredictor:
         self.preprocess_num = 10
         self.softmax_temperature = softmax_temperature
         # self.task_type = task_type
-        self.mask_prediction = mask_prediction        
+        self.mask_prediction = mask_prediction
         self.inference_with_DDP=inference_with_DDP
-        self.model=load_model(model_path=model_path,mask_prediction=mask_prediction)
+        self.rbf_chunk_size=rbf_chunk_size
+        self.model=load_model(model_path=model_path,mask_prediction=mask_prediction,rbf_chunk_size=rbf_chunk_size)
 
         self.preprocess_pipelines = []
         self.preprocess_configs = []

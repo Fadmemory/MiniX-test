@@ -4,6 +4,13 @@ import numpy as np
 from model.transformer import FeaturesTransformer
 
 def build_model(config:dict):
+    # Inject rbf_chunk_size into encoder_config_x if provided
+    if 'rbf_chunk_size' in config and config.get('rbf_chunk_size') is not None:
+        if 'encoder_config_x' in config:
+            if 'RBF_config' not in config['encoder_config_x']:
+                config['encoder_config_x']['RBF_config'] = {}
+            config['encoder_config_x']['RBF_config']['chunk_size'] = config['rbf_chunk_size']
+
     model = FeaturesTransformer(
         preprocess_config_x=config['preprocess_config_x'],
         encoder_config_x=config['encoder_config_x'],
@@ -31,10 +38,14 @@ def build_model(config:dict):
     )
     return model
 
-def load_model(model_path,mask_prediction:bool=False):
+def load_model(model_path,mask_prediction:bool=False,rbf_chunk_size:int=None):
     state_dict = torch.load(model_path, map_location="cpu", weights_only=False)
     config = state_dict['config']
     config['mask_prediction'] = mask_prediction
+
+    # Add rbf_chunk_size to config if provided
+    if rbf_chunk_size is not None:
+        config['rbf_chunk_size'] = rbf_chunk_size
 
     model = build_model(config)
     model.load_state_dict(state_dict['state_dict'])
