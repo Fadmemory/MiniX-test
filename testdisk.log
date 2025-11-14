@@ -1,0 +1,25 @@
+
+
+Fri Nov 14 14:08:31 2025
+Command line: TestDisk
+
+TestDisk 7.2, Data Recovery Utility, February 2024
+Christophe GRENIER <grenier@cgsecurity.org>
+https://www.cgsecurity.org
+OS: Darwin, kernel 23.2.0 (Darwin Kernel Version 23.2.0: Wed Nov 15 21:55:06 PST 2023; root:xnu-10002.61.3~2/RELEASE_ARM64_T6020) arm64
+Compiler: GCC 4.2
+ext2fs lib: none, ntfs lib: none, reiserfs lib: none, ewf lib: none, curses lib: ncurses 6.0
+Hard disk list
+Disk /dev/disk0 - 1000 GB / 931 GiB - 244276265 sectors (RO), sector size=4096
+Disk /dev/disk2 - 5368 MB / 5119 MiB - 1310709 sectors (RO), sector size=4096
+Disk /dev/rdisk0 - 1000 GB / 931 GiB - 244276265 sectors (RO), sector size=4096
+Disk /dev/rdisk1 - 524 MB / 500 MiB - 128000 sectors (RO), sector size=4096
+Disk /dev/rdisk2 - 5368 MB / 5119 MiB - 1310709 sectors (RO), sector size=4096
+Disk /dev/rdisk3 - 994 GB / 926 GiB - 242837545 sectors (RO), sector size=4096
+
+Partition table type (auto): None
+Media is opened in read-only.
+Partition table type (auto): None
+Media is opened in read-only.
+SIGINT detected! PhotoRec has been killed.
+SIGHUP detected! PhotoRec has been killed.
